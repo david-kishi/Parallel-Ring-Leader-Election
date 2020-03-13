@@ -19,11 +19,8 @@
 // Function to randomly generate number
 int randomInt(int rank)
 {
-    int randTmp = rand() % 100;
+    int randTmp = (rand() % 90) + 10; // generates random integer [10,99]
     randTmp = randTmp < 0 ? randTmp * (-1) : randTmp; // make positive if negative
-    randTmp = randTmp < 10 ? randTmp + 11 : randTmp; // if less than 10, add 11
-    randTmp = randTmp > 100 ? randTmp % 100 : randTmp; // if bigger than 100, modulos 100
-    randTmp = randTmp < 10 ? randTmp + 11 : randTmp; // check again if less than 10, add 11
 
     //return concat(randTmp,rank);
     return concat(randTmp, rank);
