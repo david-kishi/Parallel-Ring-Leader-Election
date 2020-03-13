@@ -1,0 +1,6 @@
+### Output Files
+*.out
+
+### MacOS
+# General
+.DS_Store
