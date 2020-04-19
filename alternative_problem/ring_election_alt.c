@@ -5,7 +5,7 @@
 *   even number of a process
 * AUTHOR: David Nguyen
 * CONTACT: david@knytes.com
-* LAST REVISED: 
+* LAST REVISED: 19/04/2020 19:55 GMT-7
 ******************************************************************************/
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,13 +17,12 @@
 #define MAXIMUM_PROC 20
 
 // Function to randomly generate number
-int randomInt(int rank)
+int randomInt()
 {
     int randTmp = (rand() % 90) + 10;                 // generates random integer [10,99]
     randTmp = randTmp < 0 ? randTmp * (-1) : randTmp; // make positive if negative
 
-    //return concat(randTmp,rank);
-    return concat(randTmp, rank);
+    return randTmp;
 }
 
 // Function to concatenate 1 with random num, then with rank
@@ -36,7 +35,14 @@ int concat(int gen, int rank)
 
     // Convert ints to string
     sprintf(s2, "%d", gen);
-    sprintf(s3, "%d", rank);
+    if (rank < 10)
+    {
+        sprintf(s3, "0%d", rank);
+    }
+    else
+    {
+        sprintf(s3, "%d", rank);
+    }
 
     // Concatenate strings
     strcat(s1, s2);
@@ -48,21 +54,26 @@ int concat(int gen, int rank)
 int main(int argc, char *argv[])
 {
     // Variable declarations
-    int rank,       // Process rank number
-        size,       // Number of processes
-        temp,       // temp placeholder for randomly computed value by process
-        results[4]; // results to hold smallOdd, oddProc, smallEven, and evenProc
+    int rank,          // Process rank number
+        size,          // Number of processes
+        temp,          // randomly generated value
+        tempComp,      // computed value
+        leftNeighbor,  // holds left neighbor's value
+        rightNeighbor, // holds right neighbor's value
+        results[4];    // results to hold smallOdd, oddProc, smallEven, and evenProc
 
     // Initiate MPI
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &size);
+    MPI_Request ireqs;
+    MPI_Status istatus;
 
     // Seed random number generator
     time_t t;
     srand((unsigned)time(&t) + rank);
 
-    // Check if processes declared is within bounds
+    // Check if processes declared is within bounds, else terminate program
     if (size < MINIMUM_PROC || size > MAXIMUM_PROC)
     {
         if (rank == 0)
@@ -72,67 +83,50 @@ int main(int argc, char *argv[])
             return 0;
         }
     }
-    else if (rank != 0) // All other ranks processing
-    {
-        // Get results from previous rank
-        MPI_Recv(&results, 4, MPI_INT, rank - 1, rank, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        printf("Process %d received in-progress results [%d,%d,%d,%d] from Process %d\n", rank, results[0], results[1], results[2], results[3], rank - 1);
-
-        // Call for random integer generator
-        temp = randomInt(rank);
-        printf("Process %d generated computed value of %d\n", rank, temp);
-
-        if (temp % 2 == 0) // Check if even
-        {
-            if (temp < results[2])
-            { // Check if smaller than stored smallEven, if so, replace.
-                printf("Process %d's computed value %d is less than result's smallest Even %d from Process %d. Replacing.\n", rank, temp, results[2], results[3]);
-                results[2] = temp;
-                results[3] = rank;
-            }
-        }
-        else if (temp < results[0]) // Check if smaller than stored smallOdd, if so, replace.
-        {
-            printf("Process %d's computed value %d is less than result's smallest Odd %d from Process %d. Replacing.\n", rank, temp, results[0], results[1]);
-            results[0] = temp;
-            results[1] = rank;
-        }
-    }
-    else // Rank 0 processing
+    else
     {
         // Call for random integer generator
-        temp = randomInt(rank);
-        printf("Process %d generated computed value of %d\n", rank, temp);
+        temp = randomInt();
+        tempComp = concat(temp, rank);
+        printf("Process %d generated random value %d, computed value of %d\n", rank, temp, tempComp);
 
-        // Initiate results
-        if (temp % 2 == 0)
+        // Send value to neighbors
+        if (rank == 0)
         {
-            results[0] = 19999;
-            results[1] = results[3] = 0;
-            results[2] = temp;
-            printf("Process 0 generated an even value. Initating results to [%d,%d,%d,%d]\n", results[0], results[1], results[2], results[3]);
+            MPI_Isend(&tempComp, 1, MPI_INT, size - 1, rank, MPI_COMM_WORLD, &ireqs);
+            MPI_Wait(&ireqs, &istatus);
         }
         else
         {
-            results[0] = temp;
-            results[1] = results[3] = 0;
-            results[2] = 19990;
-            printf("Process 0 generated an odd value. Initating results to [%d,%d,%d,%d]\n", results[0], results[1], results[2], results[3]);
+            MPI_Isend(&tempComp, 1, MPI_INT, (rank - 1) % size, rank, MPI_COMM_WORLD, &ireqs);
+            MPI_Wait(&ireqs, &istatus);
         }
-    }
-    // Send results off to next rank
-    MPI_Send(&results, 4, MPI_INT, (rank + 1) % size, (rank + 1) % size, MPI_COMM_WORLD);
-    printf("Process %d sending in-progress results [%d,%d,%d,%d] to Process %d\n", rank, results[0], results[1], results[2], results[3], (rank + 1) % size);
+        MPI_Isend(&tempComp, 1, MPI_INT, (rank + 1) % size, rank, MPI_COMM_WORLD, &ireqs);
+        MPI_Wait(&ireqs, &istatus);
 
-    // Now process 0 can receive from the last process.
-    if (rank == 0)
-    {
-        // Receive final results
-        MPI_Recv(&results, 4, MPI_INT, size - 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-        printf("Process 0 received final results [%d,%d,%d,%d] from Process %d\n", results[0], results[1], results[2], results[3], size - 1);
+        // Receive neighbor's values
+        if (rank == 0)
+        {
+            MPI_Irecv(&leftNeighbor, 1, MPI_INT, size - 1, size - 1, MPI_COMM_WORLD, &ireqs);
+            MPI_Wait(&ireqs, &istatus);
+        }
+        else
+        {
+            MPI_Irecv(&leftNeighbor, 1, MPI_INT, (rank - 1) % size, (rank - 1) % size, MPI_COMM_WORLD, &ireqs);
+            MPI_Wait(&ireqs, &istatus);
+        }
 
-        // Output election results
-        printf("\t-\n\tRESULTS\n\t-\n\tPresident: %d from Process %d\n\tVice-President: %d from Process %d\n", results[0], results[1], results[2], results[3]);
+        MPI_Irecv(&rightNeighbor, 1, MPI_INT, (rank + 1) % size, (rank + 1) % size, MPI_COMM_WORLD, &ireqs);
+        MPI_Wait(&ireqs, &istatus);
+
+        printf("Process %d, My Value: %d, Left Neighbor: %d, Right Neighbor: %d\n", rank, tempComp, leftNeighbor, rightNeighbor);
+
+        // Compare and announce if leader
+        if (tempComp > leftNeighbor && tempComp > rightNeighbor)
+        {
+
+            printf("I, process %d, am the leader of my immediate neighbors.\n", rank);
+        }
     }
 
     MPI_Finalize();
