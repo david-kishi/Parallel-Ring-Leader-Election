@@ -94,15 +94,12 @@ int main(int argc, char *argv[])
         if (rank == 0)
         {
             MPI_Isend(&tempComp, 1, MPI_INT, size - 1, rank, MPI_COMM_WORLD, &ireqs);
-            MPI_Wait(&ireqs, &istatus);
         }
         else
         {
             MPI_Isend(&tempComp, 1, MPI_INT, (rank - 1) % size, rank, MPI_COMM_WORLD, &ireqs);
-            MPI_Wait(&ireqs, &istatus);
         }
         MPI_Isend(&tempComp, 1, MPI_INT, (rank + 1) % size, rank, MPI_COMM_WORLD, &ireqs);
-        MPI_Wait(&ireqs, &istatus);
 
         // Receive neighbor's values
         if (rank == 0)
